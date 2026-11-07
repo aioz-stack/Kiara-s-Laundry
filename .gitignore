@@ -1,0 +1,36 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# Secrets - keep .env.example only
+.env
+.env.*
+!.env.example
+
+# Generated Prisma client
+src/generated/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+npm-debug.log*
+.DS_Store
+
+# Android signing key and build output
+android/signing/
+android/local.properties
+
+# Leftovers from other local tools, not part of the app
+build-activity.log
+usage.json
+feed.json
+craft.json
+capture/
+investigation.cany/

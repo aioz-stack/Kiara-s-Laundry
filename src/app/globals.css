@@ -1,0 +1,113 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --background: oklch(0.982 0.003 220);
+  --foreground: oklch(0.24 0.02 235);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.24 0.02 235);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.02 235);
+  --primary: oklch(0.47 0.09 200);
+  --primary-foreground: oklch(0.99 0.005 200);
+  --secondary: oklch(0.955 0.01 215);
+  --secondary-foreground: oklch(0.3 0.03 230);
+  --muted: oklch(0.962 0.006 220);
+  --muted-foreground: oklch(0.47 0.02 235);
+  --accent: oklch(0.945 0.02 200);
+  --accent-foreground: oklch(0.3 0.05 205);
+  --destructive: oklch(0.53 0.19 27);
+  --destructive-foreground: oklch(0.99 0.005 27);
+  --success: oklch(0.47 0.11 160);
+  --warning: oklch(0.52 0.12 75);
+  --border: oklch(0.915 0.008 225);
+  --input: oklch(0.88 0.01 225);
+  --ring: oklch(0.56 0.09 200);
+  --sidebar: oklch(0.285 0.035 225);
+  --sidebar-foreground: oklch(0.93 0.012 215);
+  --sidebar-muted: oklch(0.74 0.02 220);
+  --sidebar-accent: oklch(0.355 0.04 215);
+  /* Validated for colorblind separation and 3:1 contrast against the card surface. */
+  --chart-sales: #007f9e;
+  --chart-collected: #bd7c00;
+  --radius: 0.6rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "tnum" 0;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: white;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-area {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  .print-area section,
+  .print-area [data-slot="card"] {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+}

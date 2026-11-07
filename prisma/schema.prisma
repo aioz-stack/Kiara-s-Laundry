@@ -1,0 +1,268 @@
+// Conventions
+// - Money columns are integer centavos (`...Cents`). Never floats.
+// - Quantities are integer thousandths (`quantityMilli`), so 3.5 kg is 3500.
+// - Instants are UTC timestamps. Reports convert to the shop time zone.
+// - Financial rows are never hard-deleted: see voidedAt / reversedAt.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  CASHIER
+  STAFF
+}
+
+enum PricingUnit {
+  PER_KG
+  PER_LOAD
+  PER_PIECE
+  FIXED
+}
+
+enum OrderStatus {
+  RECEIVED
+  WASHING
+  DRYING
+  FOLDING
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  GCASH
+  MAYA
+  BANK_TRANSFER
+  CARD
+  OTHER
+}
+
+enum PaymentType {
+  PAYMENT
+  REFUND
+}
+
+/// Single row (id = 1) holding shop-wide configuration.
+model ShopSettings {
+  id            Int      @id @default(1)
+  shopName      String   @default("Kiara's Laundry Shop")
+  address       String   @default("")
+  contactNumber String   @default("")
+  receiptFooter String   @default("Thank you for choosing us!")
+  receiptPrefix String   @default("KL")
+  currency      String   @default("PHP")
+  timeZone      String   @default("Asia/Manila")
+  promoEnabled  Boolean  @default(false)
+  updatedAt     DateTime @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(STAFF)
+  isActive     Boolean   @default(true)
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  transactionsCreated LaundryTransaction[] @relation("TransactionCreatedBy")
+  transactionsUpdated LaundryTransaction[] @relation("TransactionUpdatedBy")
+  transactionsVoided  LaundryTransaction[] @relation("TransactionVoidedBy")
+  paymentsReceived    Payment[]            @relation("PaymentReceivedBy")
+  paymentsReversed    Payment[]            @relation("PaymentReversedBy")
+  expensesCreated     Expense[]            @relation("ExpenseCreatedBy")
+  expensesVoided      Expense[]            @relation("ExpenseVoidedBy")
+  auditLogs           AuditLog[]
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  phone        String?
+  email        String?
+  notes        String?
+  promoEnabled Boolean  @default(true) // takes part in the promo while it is on for the shop
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions LaundryTransaction[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Service {
+  id                String      @id @default(cuid())
+  name              String      @unique
+  description       String?
+  pricingUnit       PricingUnit
+  currentPriceCents Int
+  promoEligible     Boolean     @default(false) // earns 10+1 Laundry Promo stamps
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  items TransactionItem[]
+
+  @@index([isActive])
+}
+
+/// Hands out receipt numbers. One row per shop-local day, incremented atomically.
+model ReceiptCounter {
+  day       String @id // yyyyMMdd in the shop time zone
+  lastValue Int    @default(0)
+}
+
+model LaundryTransaction {
+  id                    String      @id @default(cuid())
+  receiptNumber         String      @unique
+  customerId            String?
+  status                OrderStatus @default(RECEIVED)
+  subtotalCents         Int
+  discountCents         Int         @default(0)
+  additionalChargeCents Int         @default(0)
+  promoDiscountCents    Int         @default(0) // value of the free load, apart from discountCents
+  promoFreeLoad         Boolean     @default(false) // this order spent one free load
+  promoEarning          Boolean     @default(false) // created while the promo was on
+  totalCents            Int
+  orderDate             DateTime
+  dueDate               DateTime?
+  completedAt           DateTime?
+  notes                 String?
+  createdById           String
+  updatedById           String?
+  voidedAt              DateTime?
+  voidedById            String?
+  voidReason            String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  customer  Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdBy User              @relation("TransactionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User?             @relation("TransactionUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  voidedBy  User?             @relation("TransactionVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+  items     TransactionItem[]
+  payments  Payment[]
+
+  @@index([orderDate])
+  @@index([status])
+  @@index([customerId])
+  @@index([createdById])
+  @@index([voidedAt])
+}
+
+model TransactionItem {
+  id                    String      @id @default(cuid())
+  transactionId         String
+  serviceId             String?
+  serviceNameSnapshot   String
+  pricingUnitSnapshot   PricingUnit
+  promoEligibleSnapshot Boolean     @default(false)
+  quantityMilli         Int
+  unitPriceCents        Int
+  lineTotalCents        Int
+
+  transaction LaundryTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  service     Service?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  @@index([transactionId])
+  @@index([serviceId])
+}
+
+/// A PAYMENT is money received. A REFUND is money returned to the customer: it
+/// is a separate row dated when the cash left, so past days never change.
+/// A reversal marks a row as entered in error and removes it from every total.
+model Payment {
+  id              String        @id @default(cuid())
+  transactionId   String
+  type            PaymentType   @default(PAYMENT)
+  amountCents     Int
+  method          PaymentMethod
+  paidAt          DateTime
+  referenceNumber String?
+  notes           String?
+  receivedById    String
+  reversedAt      DateTime?
+  reversedById    String?
+  reversalReason  String?
+  createdAt       DateTime      @default(now())
+
+  transaction LaundryTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  receivedBy  User               @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  reversedBy  User?              @relation("PaymentReversedBy", fields: [reversedById], references: [id], onDelete: Restrict)
+
+  @@index([transactionId])
+  @@index([paidAt])
+  @@index([method])
+  @@index([receivedById])
+  @@index([reversedAt])
+}
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses Expense[]
+}
+
+model Expense {
+  id              String        @id @default(cuid())
+  categoryId      String
+  description     String
+  amountCents     Int
+  expenseDate     DateTime      @db.Date // a calendar day, not an instant
+  paymentMethod   PaymentMethod
+  payee           String?
+  referenceNumber String?
+  notes           String?
+  attachmentUrl   String?
+  createdById     String
+  voidedAt        DateTime?
+  voidedById      String?
+  voidReason      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  category  ExpenseCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  createdBy User            @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  voidedBy  User?           @relation("ExpenseVoidedBy", fields: [voidedById], references: [id], onDelete: Restrict)
+
+  @@index([expenseDate])
+  @@index([categoryId])
+  @@index([createdById])
+  @@index([voidedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  beforeData Json?
+  afterData  Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+}

@@ -1,0 +1,144 @@
+{
+  "name": "kiara-laundry",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Income monitoring system for Kiara's Laundry Shop",
+  "author": "Kiara's Laundry Shop",
+  "main": "dist/electron/main.js",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "postinstall": "prisma generate",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down",
+    "app:up": "docker compose up -d --build --wait",
+    "app:down": "docker compose down",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "owner:create": "tsx scripts/create-owner.ts",
+    "desktop:build": "tsx scripts/build-desktop.ts",
+    "desktop:start": "tsc -p electron && electron .",
+    "android:build": "tsx scripts/build-android.ts",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@date-fns/tz": "1.5.0",
+    "@hookform/resolvers": "6.0.2",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "bcryptjs": "3.0.3",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "date-fns": "4.4.0",
+    "lucide-react": "1.65.0",
+    "next": "16.4.3",
+    "next-auth": "4.24.15",
+    "pg": "8.23.1",
+    "radix-ui": "1.8.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "7.91.0",
+    "recharts": "3.10.1",
+    "server-only": "0.0.1",
+    "sonner": "2.0.8",
+    "tailwind-merge": "3.7.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "dotenv": "17.2.3",
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0",
+    "eslint": "10.14.0",
+    "eslint-config-next": "16.4.3",
+    "eslint-config-prettier": "10.1.8",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "0.7.1",
+    "prisma": "7.10.1",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "tw-animate-css": "1.4.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/windows-x64": "18.6.0-beta.19"
+  },
+  "build": {
+    "appId": "com.kiaralaundry.desktop",
+    "productName": "Kiara Laundry",
+    "directories": {
+      "output": "dist/installer",
+      "buildResources": "electron/resources"
+    },
+    "files": [
+      "dist/electron/**/*",
+      "!node_modules/**"
+    ],
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!.env*"
+        ]
+      },
+      {
+        "from": ".next/static",
+        "to": "server/.next/static"
+      },
+      {
+        "from": "prisma/migrations",
+        "to": "migrations"
+      },
+      {
+        "from": "node_modules/@embedded-postgres/windows-x64/native",
+        "to": "postgres",
+        "filter": [
+          "**/*",
+          "!bin/wx*.dll",
+          "!bin/testplug.dll"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "electron/resources/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "afterSign": "electron/after-sign.cjs"
+  }
+}
