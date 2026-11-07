@@ -65,22 +65,98 @@ export async function buildTransactionWhere(
 }
 
 function orderBy(filters: TransactionFilters): Prisma.LaundryTransactionOrderByWithRelationInput[] {
+  if (filters.sort === "name") {
+    // Walk-in orders have no customer and sort after named ones.
+    return [
+      { customer: { name: filters.direction ?? "asc" } },
+      { orderDate: "desc" },
+      { id: "desc" },
+    ];
+  }
   const field = SORT_FIELDS[filters.sort as keyof typeof SORT_FIELDS] ?? "orderDate";
   return [{ [field]: filters.direction ?? "desc" }, { id: "desc" }];
 }
+
+/** Sorts that group orders by how much has been paid on them. */
+const PAYMENT_STATE_SORTS = ["paid", "unpaid"] as const;
+type PaymentStateSort = (typeof PAYMENT_STATE_SORTS)[number];
+
+function isPaymentStateSort(sort: string | undefined): sort is PaymentStateSort {
+  return PAYMENT_STATE_SORTS.includes(sort as PaymentStateSort);
+}
+
+/**
+ * One page of order ids, grouped as the payment badge shows them: paid in full,
+ * partial, unpaid, then voided last; newest first within a group. The balance is
+ * not stored, so it is worked out here exactly as `summarizeBalance` does: the
+ * total minus payments that were not reversed (refunds do not reopen a balance).
+ */
+async function pageIdsByPaymentState(
+  ids: string[],
+  sort: PaymentStateSort,
+  skip: number,
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const [paidRank, unpaidRank] = sort === "paid" ? [0, 2] : [2, 0];
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT t."id"
+    FROM "LaundryTransaction" t
+    LEFT JOIN (
+      SELECT "transactionId", SUM("amountCents") AS "paidCents"
+      FROM "Payment"
+      WHERE "type" = 'PAYMENT' AND "reversedAt" IS NULL AND "transactionId" = ANY(${ids}::text[])
+      GROUP BY "transactionId"
+    ) p ON p."transactionId" = t."id"
+    WHERE t."id" = ANY(${ids}::text[])
+    ORDER BY
+      CASE
+        WHEN t."voidedAt" IS NOT NULL THEN 3
+        WHEN t."totalCents" - COALESCE(p."paidCents", 0) = 0 THEN ${paidRank}
+        WHEN COALESCE(p."paidCents", 0) > 0 THEN 1
+        ELSE ${unpaidRank}
+      END,
+      t."orderDate" DESC,
+      t."id" DESC
+    LIMIT ${PAGE_SIZE} OFFSET ${skip}`;
+  return rows.map((row) => row.id);
+}
+
+const LIST_INCLUDE = {
+  customer: { select: { name: true, phone: true } },
+  payments: { select: { type: true, amountCents: true, reversedAt: true } },
+} as const satisfies Prisma.LaundryTransactionInclude;
 
 /** The full financial view of orders. */
 export async function listTransactions(actor: Actor, filters: TransactionFilters) {
   assertCan(actor, "transactions:view");
   const where = await buildTransactionWhere(filters);
   const page = filters.page ?? 1;
+
+  if (isPaymentStateSort(filters.sort)) {
+    // The filters stay in one place (Prisma); SQL only orders the matching ids.
+    const matching = await prisma.laundryTransaction.findMany({ where, select: { id: true } });
+    const ids = matching.map((row) => row.id);
+    const pageIds = await pageIdsByPaymentState(ids, filters.sort, (page - 1) * PAGE_SIZE);
+    const found = await prisma.laundryTransaction.findMany({
+      where: { id: { in: pageIds } },
+      include: LIST_INCLUDE,
+    });
+    const byId = new Map(found.map((row) => [row.id, row]));
+    const rows = pageIds.flatMap((id) => byId.get(id) ?? []);
+    return {
+      rows: rows.map(({ payments, ...row }) => ({
+        ...row,
+        ...summarizeBalance(row.totalCents, payments, row.voidedAt !== null),
+      })),
+      total: ids.length,
+      pageSize: PAGE_SIZE,
+    };
+  }
+
   const [rows, total] = await Promise.all([
     prisma.laundryTransaction.findMany({
       where,
-      include: {
-        customer: { select: { name: true, phone: true } },
-        payments: { select: { type: true, amountCents: true, reversedAt: true } },
-      },
+      include: LIST_INCLUDE,
       orderBy: orderBy(filters),
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -102,7 +178,9 @@ export async function listOrders(actor: Actor, filters: TransactionFilters) {
   assertCan(actor, "orders:view");
   const where = await buildTransactionWhere(filters);
   const page = filters.page ?? 1;
-  const field = filters.sort === "totalCents" ? "orderDate" : filters.sort;
+  // Staff see no amounts, so sorts that would reveal them fall back to date.
+  const field =
+    filters.sort === "totalCents" || isPaymentStateSort(filters.sort) ? "orderDate" : filters.sort;
   const [rows, total] = await Promise.all([
     prisma.laundryTransaction.findMany({
       where,

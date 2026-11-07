@@ -3,7 +3,7 @@ import { hashPassword } from "@/lib/password";
 import { saveService } from "@/server/catalog";
 import { prisma } from "@/server/db";
 import { authenticate } from "@/server/auth";
-import { recordPayment, recordRefund } from "@/server/payments";
+import { recordPayment, recordRefund, reversePayment } from "@/server/payments";
 import {
   createTransaction,
   getTransactionDetail,
@@ -263,6 +263,94 @@ describe("listing", () => {
     expect(
       (await listTransactions(team.cashier, { from: "2026-03-11", to: "2026-03-12" })).total,
     ).toBe(1);
+  });
+
+  describe("sort by", () => {
+    /**
+     * Ana: paid in full. Ben: partial. Cara: unpaid. Dan: paid, then the payment
+     * was reversed, so unpaid again. Walk-in: voided. Each order is a day apart.
+     */
+    async function makeMixedOrders() {
+      const order = (day: number, customerName?: string) =>
+        createTransaction(
+          team.cashier,
+          orderInput({
+            items: twoItems(),
+            customerName,
+            orderDate: `2026-03-${String(day).padStart(2, "0")}T09:00`,
+          }),
+        );
+      const pay = (id: string, day: number, amount: string) =>
+        recordPayment(
+          team.cashier,
+          id,
+          paymentInput(amount, { paidAt: `2026-03-${String(day).padStart(2, "0")}T10:00` }),
+        );
+
+      const walkIn = await order(9);
+      const ana = await order(10, "Ana Cruz");
+      const ben = await order(11, "Ben Santos");
+      const cara = await order(12, "Cara Lim");
+      const dan = await order(13, "Dan Reyes");
+      await pay(ana.id, 10, "327.50");
+      await pay(ben.id, 11, "100.00");
+      const reversed = await pay(dan.id, 13, "327.50");
+      await reversePayment(team.admin, reversed.id, "Wrong order");
+      await voidTransaction(team.admin, walkIn.id, "Duplicate entry");
+      return { walkIn, ana, ben, cara, dan };
+    }
+
+    const idsFor = async (sort: string, extra: { q?: string } = {}) => {
+      const { rows, total } = await listTransactions(team.cashier, { sort, ...extra });
+      return { ids: rows.map((row) => row.id), total };
+    };
+
+    it("puts paid in full first, then partial, unpaid, and voided last", async () => {
+      const o = await makeMixedOrders();
+      const { ids, total } = await idsFor("paid");
+      expect(ids).toEqual([o.ana.id, o.ben.id, o.dan.id, o.cara.id, o.walkIn.id]);
+      expect(total).toBe(5);
+    });
+
+    it("puts unpaid first (counting a reversed payment as unpaid), voided last", async () => {
+      const o = await makeMixedOrders();
+      const { ids } = await idsFor("unpaid");
+      expect(ids).toEqual([o.dan.id, o.cara.id, o.ben.id, o.ana.id, o.walkIn.id]);
+    });
+
+    it("sorts by customer name A to Z with walk-ins last", async () => {
+      const o = await makeMixedOrders();
+      const { ids } = await idsFor("name");
+      expect(ids).toEqual([o.ana.id, o.ben.id, o.cara.id, o.dan.id, o.walkIn.id]);
+    });
+
+    it("sorts by date newest first", async () => {
+      const o = await makeMixedOrders();
+      const { ids } = await idsFor("orderDate");
+      expect(ids).toEqual([o.dan.id, o.cara.id, o.ben.id, o.ana.id, o.walkIn.id]);
+    });
+
+    it("keeps the search filter and balances when sorting by payment", async () => {
+      const o = await makeMixedOrders();
+      const { rows, total } = await listTransactions(team.cashier, { sort: "unpaid", q: "a" });
+      // "a" matches Ana, Cara, Dan and Ben Santos, but not the walk-in.
+      expect(total).toBe(4);
+      expect(rows.map((row) => row.id)).toEqual([o.dan.id, o.cara.id, o.ben.id, o.ana.id]);
+      expect(rows.map((row) => row.balanceCents)).toEqual([32750, 32750, 22750, 0]);
+      expect((await idsFor("paid", { q: "nobody" })).total).toBe(0);
+    });
+
+    it("never orders staff by payment", async () => {
+      const o = await makeMixedOrders();
+      const { rows } = await listOrders(team.staff, { sort: "unpaid" });
+      expect(rows.map((row) => row.id)).toEqual([
+        o.dan.id,
+        o.cara.id,
+        o.ben.id,
+        o.ana.id,
+        o.walkIn.id,
+      ]);
+    });
   });
 
   it("gives staff no amounts at all", async () => {

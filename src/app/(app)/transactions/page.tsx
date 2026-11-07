@@ -53,6 +53,20 @@ export default async function TransactionsPage(props: { searchParams: Promise<Se
       label: ORDER_STATUS_LABELS[status],
     })),
   };
+  // Staff never see amounts, so they only get the sorts that do not reveal them.
+  const sortChoice = {
+    defaultValue: "orderDate",
+    options: [
+      { value: "name", label: "Name (A–Z)" },
+      ...(showAmounts
+        ? [
+            { value: "paid", label: "Paid first" },
+            { value: "unpaid", label: "Unpaid first" },
+          ]
+        : []),
+      { value: "orderDate", label: "Date (newest first)" },
+    ],
+  };
   const when = (date: Date) => formatInZone(date, timeZone, "MMM d, yyyy h:mm a");
 
   const empty = (
@@ -91,6 +105,7 @@ export default async function TransactionsPage(props: { searchParams: Promise<Se
         searchPlaceholder="Receipt, customer, or phone"
         selects={[statusFilter]}
         dateLabel="Order date"
+        sort={sortChoice}
       />
       <Card>{table}</Card>
     </>

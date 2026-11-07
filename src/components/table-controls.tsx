@@ -23,6 +23,12 @@ export type FilterSelect = {
   options: { value: string; label: string }[];
 };
 
+export type SortChoice = {
+  options: { value: string; label: string }[];
+  /** Shown when the URL has no sort. */
+  defaultValue: string;
+};
+
 /** A plain GET form: filters live in the URL and work without client code. */
 export function FilterBar({
   path,
@@ -31,6 +37,7 @@ export function FilterBar({
   selects = [],
   dates = true,
   dateLabel = "Date",
+  sort,
 }: {
   path: string;
   query: Query;
@@ -38,7 +45,11 @@ export function FilterBar({
   selects?: FilterSelect[];
   dates?: boolean;
   dateLabel?: string;
+  sort?: SortChoice;
 }) {
+  const currentSort = query.sort ?? sort?.defaultValue ?? "";
+  // A column header may have set a sort the dropdown does not list; keep it.
+  const sortFromHeader = sort && !sort.options.some((option) => option.value === currentSort);
   const hasFilters = Object.entries(query).some(
     ([key, value]) => value && !["sort", "direction", "page"].includes(key),
   );
@@ -103,8 +114,30 @@ export function FilterBar({
           </div>
         </>
       ) : null}
-      {query.sort ? <input type="hidden" name="sort" value={query.sort} /> : null}
-      {query.direction ? <input type="hidden" name="direction" value={query.direction} /> : null}
+      {sort ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="filter-sort">Sort by</Label>
+          <NativeSelect
+            id="filter-sort"
+            name="sort"
+            defaultValue={currentSort}
+            className="w-auto min-w-36"
+          >
+            {sortFromHeader ? <option value={currentSort}>Column header</option> : null}
+            {sort.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : query.sort ? (
+        <input type="hidden" name="sort" value={query.sort} />
+      ) : null}
+      {/* Each dropdown sort has its own natural direction; only header sorts keep theirs. */}
+      {query.direction && (!sort || sortFromHeader) ? (
+        <input type="hidden" name="direction" value={query.direction} />
+      ) : null}
       <Button type="submit" variant="secondary">
         Apply
       </Button>
