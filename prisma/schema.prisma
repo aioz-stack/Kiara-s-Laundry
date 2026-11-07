@@ -85,6 +85,22 @@ model User {
   expensesCreated     Expense[]            @relation("ExpenseCreatedBy")
   expensesVoided      Expense[]            @relation("ExpenseVoidedBy")
   auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+/// One-time password reset links. Only a SHA-256 hash of the token is stored, so
+/// a database leak cannot be used to reset a password.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Customer {

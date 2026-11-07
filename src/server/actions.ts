@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import type { UserCreateValues } from "@/lib/validation";
 import {
@@ -8,7 +9,9 @@ import {
   customerSchema,
   expenseSchema,
   firstOwnerSchema,
+  forgotPasswordSchema,
   paymentSchema,
+  resetPasswordSchema,
   promoToggleSchema,
   reasonSchema,
   refundSchema,
@@ -28,7 +31,7 @@ import {
 } from "@/server/catalog";
 import { createExpense, updateExpense, voidExpense } from "@/server/expenses";
 import { recordPayment, recordRefund, reversePayment } from "@/server/payments";
-import { setPromoEnabled, updateSettings } from "@/server/settings";
+import { getSettings, setPromoEnabled, updateSettings } from "@/server/settings";
 import {
   createTransaction,
   updateOrderStatus,
@@ -36,6 +39,13 @@ import {
   voidTransaction,
 } from "@/server/transactions";
 import { createFirstOwner, createUser, updateUser } from "@/server/users";
+import { DomainError } from "@/server/errors";
+import { isMailConfigured, sendMail } from "@/server/mailer";
+import {
+  createResetLink,
+  resetEmailContent,
+  resetPasswordWithToken,
+} from "@/server/password-reset";
 
 /** Totals appear across the app, so financial writes refresh the whole layout. */
 function refreshAll() {
@@ -48,6 +58,38 @@ const optionalId = idSchema.nullable();
 export async function createFirstOwnerAction(input: unknown) {
   return runPublicAction(firstOwnerSchema, input, async (data) => {
     await createFirstOwner(data);
+  });
+}
+
+/**
+ * Always answers the same way, whether or not the address has an account. The
+ * email goes out after the response, so timing does not give it away either.
+ */
+export async function requestPasswordResetAction(input: unknown) {
+  return runPublicAction(forgotPasswordSchema, input, async (data) => {
+    if (!isMailConfigured()) {
+      throw new DomainError(
+        "Password reset by email is not set up yet. Ask the shop owner to reset your password.",
+      );
+    }
+    const request = await createResetLink(data.email);
+    if (!request) return;
+    const baseUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+    after(async () => {
+      try {
+        const { shopName } = await getSettings();
+        const content = resetEmailContent(request, shopName, baseUrl);
+        await sendMail({ to: request.to, fromName: shopName, ...content });
+      } catch (error) {
+        console.error("Could not send the password reset email.", error);
+      }
+    });
+  });
+}
+
+export async function resetPasswordAction(input: unknown) {
+  return runPublicAction(resetPasswordSchema, input, async (data) => {
+    await resetPasswordWithToken(data);
   });
 }
 

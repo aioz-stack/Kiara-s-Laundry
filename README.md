@@ -109,6 +109,21 @@ at least 10 characters. Add services and staff accounts after signing in.
 npm run owner:create -- "Your Name" you@example.com
 ```
 
+### Password reset by email
+
+"Forgot password?" on the sign-in page emails a one-time link to `/reset-password`. It needs the
+`SMTP_*` values in `.env` (see `.env.example`). For Gmail, use an
+[app password](https://myaccount.google.com/apppasswords), not the account's normal password.
+Without `SMTP_PASSWORD` the form says reset by email is not set up, and the owner resets
+passwords on the Users page instead.
+
+- A link works once, for 60 minutes. Asking again replaces the old link.
+- One email per account every 2 minutes, so the form cannot flood an inbox.
+- The form answers the same way for every address, so it never shows who has an account.
+- Only a SHA-256 hash of the token is stored. Requests and resets go in the audit log.
+- The link uses `NEXTAUTH_URL`, so set it to the address people actually open.
+- Resetting does not sign out sessions that are already open; they last up to 12 hours.
+
 ## Scripts
 
 | Script                        | What it does                                               |

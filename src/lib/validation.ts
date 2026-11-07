@@ -198,6 +198,24 @@ export const firstOwnerSchema = userCreateSchema
 export type FirstOwnerValues = z.input<typeof firstOwnerSchema>;
 export type FirstOwnerInput = z.output<typeof firstOwnerSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: email.transform((value) => value.toLowerCase()),
+});
+export type ForgotPasswordValues = z.input<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().min(20, "This reset link is incomplete.").max(200),
+    password,
+    confirmPassword: z.string(),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    message: "The passwords do not match.",
+    path: ["confirmPassword"],
+  });
+export type ResetPasswordValues = z.input<typeof resetPasswordSchema>;
+export type ResetPasswordInput = z.output<typeof resetPasswordSchema>;
+
 export const userUpdateSchema = z.object({
   name: z.string().trim().min(2, "Enter a name.").max(120),
   role: z.enum(ROLES),

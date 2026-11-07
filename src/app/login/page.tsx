@@ -7,7 +7,12 @@ import { isFirstRunSetupOpen } from "@/server/users";
 
 export const metadata = { title: "Sign in" };
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reset?: string }>;
+}) {
+  const { reset } = await searchParams;
   const actor = await getActor();
   if (actor) redirect(homePath(actor.role));
   if (await isFirstRunSetupOpen()) redirect("/setup");
@@ -17,6 +22,11 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-sm">
         <h1 className="text-xl font-semibold tracking-tight">{shopName}</h1>
         <p className="mt-1 mb-6 text-sm text-muted-foreground">Sign in to continue.</p>
+        {reset === "1" ? (
+          <p role="status" className="mb-4 rounded-md bg-primary/10 px-3 py-2 text-sm">
+            Your password was changed. Sign in with the new one.
+          </p>
+        ) : null}
         <LoginForm />
       </div>
     </main>

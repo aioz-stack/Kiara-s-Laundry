@@ -6,7 +6,7 @@ import { prisma } from "@/server/db";
 
 export async function resetDatabase() {
   await prisma.$executeRawUnsafe(`
-    TRUNCATE "AuditLog", "Payment", "TransactionItem", "LaundryTransaction", "Expense",
+    TRUNCATE "PasswordResetToken", "AuditLog", "Payment", "TransactionItem", "LaundryTransaction", "Expense",
       "ExpenseCategory", "Service", "Customer", "User", "ReceiptCounter", "ShopSettings" CASCADE`);
 }
 

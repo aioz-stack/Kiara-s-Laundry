@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -95,7 +96,10 @@ describe("desktop migrations", () => {
     await applyMigrations(client, migrationsDir);
 
     const applied = await client.query(`SELECT "migration_name" FROM "_prisma_migrations"`);
-    expect(applied.rowCount).toBe(4);
+    const folders = readdirSync(migrationsDir, { withFileTypes: true }).filter((entry) =>
+      entry.isDirectory(),
+    );
+    expect(applied.rowCount).toBe(folders.length);
     const columns = await client.query(
       `SELECT 1 FROM information_schema.columns
        WHERE table_name = 'LaundryTransaction' AND column_name = 'promoFreeLoad'`,
